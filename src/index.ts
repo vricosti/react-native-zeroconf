@@ -1,5 +1,5 @@
-import { Platform, NativeModules, DeviceEventEmitter } from 'react-native'
-import { EventEmitter } from 'events'
+import { Platform, NativeModules, NativeEventEmitter, EmitterSubscription } from 'react-native'
+import { ZeroconfServices } from './types';
 
 const RNZeroconf = NativeModules.RNZeroconf
 
@@ -8,10 +8,14 @@ export const ImplType = {
   DNSSD: 'DNSSD',
 }
 
-export default class Zeroconf extends EventEmitter {
-  constructor(props) {
-    super(props)
+export default class Zeroconf extends NativeEventEmitter {
+  private _services: ZeroconfServices;
+  private _publishedServices: ZeroconfServices;
+  private _dListeners: { [key: string]: EmitterSubscription };
 
+  constructor() {
+    super(RNZeroconf);
+    
     this._services = {}
     this._publishedServices = {}
     this._dListeners = {}
@@ -27,21 +31,21 @@ export default class Zeroconf extends EventEmitter {
       return this.emit('error', new Error('RNZeroconf listeners already in place.'))
     }
 
-    this._dListeners.start = DeviceEventEmitter.addListener('RNZeroconfStart', () =>
+    this._dListeners.start =  this.addListener('RNZeroconfStart', () =>
       this.emit('start'),
     )
 
-    this._dListeners.stop = DeviceEventEmitter.addListener('RNZeroconfStop', () =>
+    this._dListeners.stop = this.addListener('RNZeroconfStop', () =>
       this.emit('stop'),
     )
 
-    this._dListeners.error = DeviceEventEmitter.addListener('RNZeroconfError', err => {
+    this._dListeners.error = this.addListener('RNZeroconfError', err => {
       if (this.listenerCount('error') > 0) {
         this.emit('error', new Error(err))
       }
     })
 
-    this._dListeners.found = DeviceEventEmitter.addListener('RNZeroconfFound', service => {
+    this._dListeners.found = this.addListener('RNZeroconfFound', service => {
       if (!service || !service.name) {
         return
       }
@@ -52,7 +56,7 @@ export default class Zeroconf extends EventEmitter {
       this.emit('update')
     })
 
-    this._dListeners.remove = DeviceEventEmitter.addListener('RNZeroconfRemove', service => {
+    this._dListeners.remove = this.addListener('RNZeroconfRemove', service => {
       if (!service || !service.name) {
         return
       }
@@ -64,7 +68,7 @@ export default class Zeroconf extends EventEmitter {
       this.emit('update')
     })
 
-    this._dListeners.resolved = DeviceEventEmitter.addListener('RNZeroconfResolved', service => {
+    this._dListeners.resolved = this.addListener('RNZeroconfResolved', service => {
       if (!service || !service.name) {
         return
       }
@@ -74,7 +78,7 @@ export default class Zeroconf extends EventEmitter {
       this.emit('update')
     })
 
-    this._dListeners.published = DeviceEventEmitter.addListener(
+    this._dListeners.published = this.addListener(
       'RNZeroconfServiceRegistered',
       service => {
         if (!service || !service.name) {
@@ -86,7 +90,7 @@ export default class Zeroconf extends EventEmitter {
       },
     )
 
-    this._dListeners.unpublished = DeviceEventEmitter.addListener(
+    this._dListeners.unpublished = this.addListener(
       'RNZeroconfServiceUnregistered',
       service => {
         if (!service || !service.name) {
@@ -142,7 +146,14 @@ export default class Zeroconf extends EventEmitter {
   /**
    * Publish a service
    */
-  publishService(type, protocol, domain = 'local.', name, port, txt = {}, implType = ImplType.NSD) {
+  publishService(
+    type: string,
+    protocol: string,
+    domain: string = 'local.',
+    name: string,
+    port: number,
+    txt: Record<string, string> = {},
+    implType = ImplType.NSD) {
     if (Object.keys(txt).length !== 0) {
       Object.entries(txt).map(([key, value]) => (txt[key] = value.toString()))
     }
@@ -156,7 +167,7 @@ export default class Zeroconf extends EventEmitter {
   /**
    * Unpublish a service
    */
-  unpublishService(name, implType = ImplType.NSD) {
+  unpublishService(name: string, implType = ImplType.NSD) {
     if (Platform.OS === 'android') {
       RNZeroconf.unregisterService(name, implType)
     } else {
